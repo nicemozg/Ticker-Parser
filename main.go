@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"gopkg.in/yaml.v2"
 	"log"
 	"os"
 	"os/signal"
@@ -13,8 +14,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"gopkg.in/yaml.v2"
 )
 
 func main() {
@@ -48,9 +47,33 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
-	for _, wrk := range workers {
+	priceChan := make(chan models.PriceUpdate, 100)
+	previousPrices := make(map[string]string)
+	var mu sync.Mutex
+
+	for _, w := range workers {
 		wg.Add(1)
-		go wrk.Run(ctx, &wg)
+		go w.Run(ctx, &wg, priceChan)
+	}
+
+	for i := 0; i < config.MaxWorkers; i++ {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case priceUpdate := <-priceChan:
+					mu.Lock()
+					changed := ""
+					if previousPrice, ok := previousPrices[priceUpdate.Symbol]; ok && previousPrice != priceUpdate.Price {
+						changed = " changed"
+					}
+					previousPrices[priceUpdate.Symbol] = priceUpdate.Price
+					mu.Unlock()
+					fmt.Printf("%s price:%s%s\n", priceUpdate.Symbol, priceUpdate.Price, changed)
+				}
+			}
+		}()
 	}
 
 	ticker := time.NewTicker(5 * time.Second)

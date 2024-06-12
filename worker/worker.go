@@ -13,14 +13,13 @@ import (
 
 type Worker struct {
 	Symbols       []string
-	requestsCount int
+	RequestsCount int
 	mu            sync.Mutex
 }
 
-func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
+func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup, priceChan chan<- models.PriceUpdate) {
 	defer wg.Done()
 	client := &http.Client{}
-	previousPrices := make(map[string]string)
 
 	for {
 		select {
@@ -31,7 +30,7 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 				resp, err := client.Get(fmt.Sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%s", symbol))
 
 				w.mu.Lock()
-				w.requestsCount++
+				w.RequestsCount++
 				w.mu.Unlock()
 
 				if err != nil {
@@ -52,13 +51,7 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 					continue
 				}
 
-				changed := ""
-				if previousPrice, ok := previousPrices[symbol]; ok && previousPrice != ticker.Price {
-					changed = " changed"
-				}
-				previousPrices[symbol] = ticker.Price
-
-				fmt.Printf("%s price:%s%s\n", ticker.Symbol, ticker.Price, changed)
+				priceChan <- models.PriceUpdate{Symbol: ticker.Symbol, Price: ticker.Price}
 			}
 		}
 	}
@@ -67,5 +60,5 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 func (w *Worker) GetRequestsCount() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.requestsCount
+	return w.RequestsCount
 }

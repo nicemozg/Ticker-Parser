@@ -9,3 +9,8 @@ type Ticker struct {
 	Symbol string `json:"symbol"`
 	Price  string `json:"price"`
 }
+
+type PriceUpdate struct {
+	Symbol string
+	Price  string
+}
