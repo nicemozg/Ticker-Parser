@@ -20,7 +20,7 @@ func main() {
 	configPath := "config.yaml"
 	file, err := os.Open(configPath)
 	if err != nil {
-		log.Fatalf("Error opening config file: %v", err)
+		log.Fatalf("Error opening config file: %v", err) // не очень практика писать в ошибке слова error, cannot, unable и тд - и так понятно что случилаь ошибка
 	}
 	defer file.Close()
 
@@ -36,7 +36,7 @@ func main() {
 	}
 
 	workers := make([]*worker.Worker, config.MaxWorkers)
-	for i := 0; i < config.MaxWorkers; i++ {
+	for i := 0; i < config.MaxWorkers; i++ { // лучше еще проверить, что воркеров не больше чем символов
 		workers[i] = &worker.Worker{}
 	}
 
@@ -66,7 +66,7 @@ func main() {
 					mu.Lock()
 					changed := ""
 					if previousPrice, ok := previousPrices[priceUpdate.Symbol]; ok && previousPrice != priceUpdate.Price {
-						changed = " changed"
+						changed = " changed" // пробел не нужен, если ты printf используешь - vjt;im nfv jnajhvfnbjdfnm
 					}
 					previousPrices[priceUpdate.Symbol] = priceUpdate.Price
 					mu.Unlock()
