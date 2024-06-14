@@ -16,37 +16,34 @@ type Worker struct {
 	Symbols        []string
 	RequestsCount  int
 	mu             sync.Mutex
-	client         *http.Client      // Исправлено: добавление клиента в структуру Worker
-	previousPrices map[string]string // Исправлено: добавление карты для предыдущих цен в структуру Worker
+	client         *http.Client
+	previousPrices map[string]string
 }
 
 func NewWorker(symbols []string) *Worker {
 	return &Worker{
 		Symbols:        symbols,
-		client:         &http.Client{Timeout: 10 * time.Second}, // Исправлено: установка таймаута для клиента
-		previousPrices: make(map[string]string),                 // Исправлено: инициализация карты предыдущих цен
+		client:         &http.Client{Timeout: 10 * time.Second},
+		previousPrices: make(map[string]string),
 	}
 }
 
 func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup, priceChan chan<- models.PriceUpdate) {
 	defer wg.Done()
-
 	for {
 		for _, symbol := range w.Symbols {
 			select {
-			case <-ctx.Done(): // Исправлено: селект для проверки ctx внутри цикла символов
-				fmt.Println("Stopping Run goroutine...")
+			case <-ctx.Done():
 				return
 			default:
-				w.IncReqCount() // Исправлено: вызов метода для инкрементации счетчика запросов
+				w.IncReqCount()
 				resp, err := w.client.Get(fmt.Sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%s", symbol))
-				if err != nil { // Исправлено: перемещение логирования ошибок ближе к запросу
+				if err != nil {
 					log.Println("fetching price:", err)
 					continue
 				}
-				defer resp.Body.Close()
-
 				body, err := io.ReadAll(resp.Body)
+				defer resp.Body.Close()
 				if err != nil {
 					log.Println("reading response body:", err)
 					continue
@@ -57,13 +54,15 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup, priceChan chan<- m
 					log.Println("unmarshalling JSON:", err)
 					continue
 				}
-				priceChan <- models.PriceUpdate{Symbol: ticker.Symbol, Price: ticker.Price}
+				if ctx.Err() == nil {
+					priceChan <- models.PriceUpdate{Symbol: ticker.Symbol, Price: ticker.Price}
+				}
 			}
 		}
 	}
 }
 
-func (w *Worker) IncReqCount() { // Исправлено: метод для инкрементации счетчика запросов
+func (w *Worker) IncReqCount() {
 	w.mu.Lock()
 	w.RequestsCount++
 	w.mu.Unlock()

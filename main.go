@@ -20,14 +20,14 @@ func main() {
 	configPath := "config.yaml"
 	file, err := os.Open(configPath)
 	if err != nil {
-		log.Fatalf("Error opening config file: %v", err)
+		log.Fatalf("Opening config file: %v", err)
 	}
 	defer file.Close()
 
 	var config models.Config
 	decoder := yaml.NewDecoder(file)
 	if err := decoder.Decode(&config); err != nil {
-		log.Fatalf("Error decoding config file: %v", err)
+		log.Fatalf("Decoding config file: %v", err)
 	}
 
 	numCPU := runtime.NumCPU()
@@ -35,13 +35,15 @@ func main() {
 		config.MaxWorkers = numCPU
 	}
 
-	// Создаем группу воркеров
+	if config.MaxWorkers > len(config.Symbols) {
+		config.MaxWorkers = len(config.Symbols)
+	}
+
 	workers := make([]*worker.Worker, config.MaxWorkers)
 	for i := 0; i < config.MaxWorkers; i++ {
 		workers[i] = worker.NewWorker([]string{})
 	}
 
-	// Распределяем символы по воркерам
 	for i, symbol := range config.Symbols {
 		workers[i%config.MaxWorkers].Symbols = append(workers[i%config.MaxWorkers].Symbols, symbol)
 	}
@@ -49,28 +51,26 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
-	priceChan := make(chan models.PriceUpdate)
+	priceChan := make(chan models.PriceUpdate, 100)
 	previousPrices := make(map[string]string)
 	var mu sync.Mutex
 
-	// Запускаем воркеров
 	for _, w := range workers {
 		wg.Add(1)
 		go w.Run(ctx, &wg, priceChan)
 	}
 
-	// Горутина для вывода цен на консоль
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				fmt.Println("Stopping price display goroutine...")
+				close(priceChan)
 				return
 			case priceUpdate := <-priceChan:
 				mu.Lock()
 				changed := ""
 				if previousPrice, ok := previousPrices[priceUpdate.Symbol]; ok && previousPrice != priceUpdate.Price {
-					changed = " changed"
+					changed = "changed"
 				}
 				previousPrices[priceUpdate.Symbol] = priceUpdate.Price
 				mu.Unlock()
@@ -84,7 +84,6 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
-				fmt.Println("Stopping workers requests total goroutine...")
 				return
 			case <-ticker.C:
 				totalRequests := 0
@@ -99,14 +98,11 @@ func main() {
 	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Горутина для обработки сигнала остановки
 	go func() {
 		<-stopChan
-		fmt.Println("Received stop signal, shutting down...")
 		cancel()
 	}()
 
-	// Чтение ввода пользователя для остановки
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		if scanner.Text() == "STOP" {
@@ -115,7 +111,6 @@ func main() {
 		}
 	}
 
-	// Ждем завершения всех воркеров
 	wg.Wait()
 	fmt.Println("All workers stopped.")
 }
