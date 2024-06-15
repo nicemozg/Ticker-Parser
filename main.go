@@ -64,6 +64,17 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
+				// Прочитать оставшиеся элементы в канале
+				for priceUpdate := range priceChan {
+					mu.Lock()
+					changed := ""
+					if previousPrice, ok := previousPrices[priceUpdate.Symbol]; ok && previousPrice != priceUpdate.Price {
+						changed = "changed"
+					}
+					previousPrices[priceUpdate.Symbol] = priceUpdate.Price
+					mu.Unlock()
+					fmt.Printf("%s price:%s%s\n", priceUpdate.Symbol, priceUpdate.Price, changed)
+				}
 				close(priceChan)
 				return
 			case priceUpdate := <-priceChan:

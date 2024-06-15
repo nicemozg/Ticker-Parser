@@ -43,7 +43,7 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup, priceChan chan<- m
 					continue
 				}
 				body, err := io.ReadAll(resp.Body)
-				defer resp.Body.Close()
+				resp.Body.Close()
 				if err != nil {
 					log.Println("reading response body:", err)
 					continue
